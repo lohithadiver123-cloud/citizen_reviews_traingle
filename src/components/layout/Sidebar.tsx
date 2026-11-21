@@ -189,12 +189,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenChat }) => {
                   >
                     <div className="flex items-center gap-2.5 truncate">
                       <div
-                        className={`p-1 rounded-lg transition-colors ${
+                        className={`p-1.5 rounded-lg transition-colors ${
                           isActive
                             ? item.isSpecial
-                              ? 'text-[#C6FF5F]'
-                              : 'text-[#43D9FF]'
-                            : 'text-slate-500 group-hover:text-slate-300'
+                              ? 'text-[#C6FF5F] bg-[#C6FF5F]/15'
+                              : 'text-[#43D9FF] bg-[#43D9FF]/15'
+                            : 'text-slate-300 group-hover:text-[#43D9FF] bg-[#162035]/60 group-hover:bg-[#1B2844]'
                         }`}
                       >
                         <Icon className="w-4 h-4" />
