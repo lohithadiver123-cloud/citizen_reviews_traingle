@@ -1,163 +1,77 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
+import {
+  AdvancedMarker,
+  ColorScheme,
+  Map as GoogleMap,
+  useMap,
+} from '@vis.gl/react-google-maps';
 import { useApp } from '../../context/AppContext';
-import { Complaint, Severity } from '../../types';
-import L from 'leaflet';
-import { 
-  MapPin, 
-  Layers, 
-  Filter, 
-  Flame, 
-  Eye, 
-  Clock, 
-  CheckCircle2, 
-  Navigation, 
-  SlidersHorizontal,
+import { Complaint } from '../../types';
+import {
+  MapPin,
+  Navigation,
   X,
   ExternalLink,
-  Radio
+  Radio,
 } from 'lucide-react';
 
+const CITY_MAP_ID = 'city-incident-map';
+
+const CameraFocusController: React.FC<{
+  focusTarget: { lat: number; lng: number; nonce: number } | null;
+}> = ({ focusTarget }) => {
+  const map = useMap(CITY_MAP_ID);
+
+  useEffect(() => {
+    if (!map || !focusTarget) return;
+    map.panTo({ lat: focusTarget.lat, lng: focusTarget.lng });
+    map.setZoom(15);
+  }, [map, focusTarget]);
+
+  return null;
+};
+
 export const CityIncidentMapView: React.FC = () => {
-  const { 
-    complaints, 
-    sectors, 
-    filterSector, 
+  const {
+    complaints,
+    sectors,
+    filterSector,
     setFilterSector,
-    filterSeverity, 
+    filterSeverity,
     setFilterSeverity,
-    filterWard, 
+    filterWard,
     setFilterWard,
     setSelectedComplaintForDetails,
-    updateComplaintStatus,
-    setActiveTab
   } = useApp();
 
+  const mapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
   const [selectedIncident, setSelectedIncident] = useState<Complaint | null>(null);
   const [heatmapMode, setHeatmapMode] = useState(false);
-
-  const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<L.Map | null>(null);
-  const markersLayerRef = useRef<L.LayerGroup | null>(null);
+  const [focusTarget, setFocusTarget] = useState<{
+    lat: number;
+    lng: number;
+    nonce: number;
+  } | null>(null);
 
   // Filter complaints based on map controls
-  const visibleComplaints = complaints.filter(c => {
+  const visibleComplaints = complaints.filter((c) => {
     if (filterSector !== 'ALL' && c.sectorId !== filterSector) return false;
     if (filterSeverity !== 'ALL' && c.severity !== filterSeverity) return false;
     if (filterWard !== 'ALL' && c.ward !== filterWard) return false;
     return true;
   });
 
-  // Initialize Leaflet Map
-  useEffect(() => {
-    if (!mapContainerRef.current) return;
-
-    if (!mapInstanceRef.current) {
-      // Center on city coordinates (Bangalore: 12.9716, 77.5946)
-      const map = L.map(mapContainerRef.current, {
-        center: [12.9716, 77.6100],
-        zoom: 12,
-        zoomControl: false
-      });
-
-      // CartoDB Dark Matter tile layer for slick cyberpunk dark theme
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap contributors',
-        subdomains: 'abcd',
-        maxZoom: 19
-      }).addTo(map);
-
-      L.control.zoom({ position: 'bottomright' }).addTo(map);
-
-      const markersGroup = L.layerGroup().addTo(map);
-      markersLayerRef.current = markersGroup;
-      mapInstanceRef.current = map;
-    }
-
-    return () => {
-      // Keep map alive or clean up
-    };
-  }, []);
-
-  // Update map markers when visibleComplaints change
-  useEffect(() => {
-    if (!mapInstanceRef.current || !markersLayerRef.current) return;
-
-    markersLayerRef.current.clearLayers();
-
-    visibleComplaints.forEach((comp) => {
-      const isCritical = comp.severity === 'CRITICAL';
-      const isHigh = comp.severity === 'HIGH';
-      const isMedium = comp.severity === 'MEDIUM';
-
-      const color = isCritical ? '#FF4D5E' : isHigh ? '#FF9B42' : isMedium ? '#FFD166' : '#47D18C';
-
-      // Create glowing HTML marker
-      const customIcon = L.divIcon({
-        className: 'custom-incident-marker',
-        html: `
-          <div style="
-            position: relative;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 32px;
-            height: 32px;
-            cursor: pointer;
-          ">
-            ${isCritical ? `
-              <div style="
-                position: absolute;
-                width: 32px;
-                height: 32px;
-                border-radius: 50%;
-                background-color: rgba(255, 77, 94, 0.4);
-                animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
-              "></div>
-            ` : ''}
-            <div style="
-              width: 24px;
-              height: 24px;
-              border-radius: 50%;
-              background: #121A2B;
-              border: 2px solid ${color};
-              box-shadow: 0 0 10px ${color}80;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              font-size: 11px;
-              font-weight: bold;
-              color: white;
-            ">
-              ${comp.sectorIcon}
-            </div>
-          </div>
-        `,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16]
-      });
-
-      const marker = L.marker(comp.coordinates, { icon: customIcon });
-
-      marker.on('click', () => {
-        setSelectedIncident(comp);
-      });
-
-      markersLayerRef.current?.addLayer(marker);
-    });
-
-  }, [visibleComplaints]);
-
-  // Center map on a specific incident
   const handleCenterOn = (coords: [number, number]) => {
-    if (mapInstanceRef.current) {
-      mapInstanceRef.current.flyTo(coords, 14, { duration: 1.2 });
-    }
+    setFocusTarget({
+      lat: coords[0],
+      lng: coords[1],
+      nonce: Date.now(),
+    });
   };
 
   return (
     <div className="space-y-4 max-w-7xl mx-auto pb-12">
-      
-      {/* Top Map Controls Header (Blueprint Section 10) */}
+      {/* Top Map Controls Header */}
       <div className="glass-panel p-4 rounded-2xl border border-[#223252] flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -170,27 +84,25 @@ export const CityIncidentMapView: React.FC = () => {
             </span>
           </div>
           <p className="text-xs text-[#8E9EB8] mt-0.5">
-            Geospatial surveillance & active dispatch routing across all municipal wards.
+            Geospatial surveillance &amp; active dispatch routing across all municipal wards.
           </p>
         </div>
 
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Sector Filter */}
           <select
             value={filterSector}
             onChange={(e) => setFilterSector(e.target.value)}
             className="px-3 py-1.5 rounded-xl bg-[#0B1020] border border-[#223252] text-xs font-mono text-slate-200 focus:outline-none focus:border-[#43D9FF]"
           >
             <option value="ALL">All Sectors (18)</option>
-            {sectors.map(sec => (
+            {sectors.map((sec) => (
               <option key={sec.id} value={sec.id} className="bg-[#121A2B]">
                 {sec.icon} #{sec.id} {sec.name}
               </option>
             ))}
           </select>
 
-          {/* Severity Filter */}
           <select
             value={filterSeverity}
             onChange={(e) => setFilterSeverity(e.target.value)}
@@ -203,37 +115,113 @@ export const CityIncidentMapView: React.FC = () => {
             <option value="LOW" className="bg-[#121A2B]">🟢 Low</option>
           </select>
 
-          {/* Ward Filter */}
           <select
             value={filterWard}
             onChange={(e) => setFilterWard(e.target.value)}
             className="px-3 py-1.5 rounded-xl bg-[#0B1020] border border-[#223252] text-xs font-mono text-slate-200 focus:outline-none focus:border-[#43D9FF]"
           >
             <option value="ALL">All Wards</option>
-            {Array.from({ length: 20 }, (_, i) => `Ward ${i + 1}`).map(w => (
+            {Array.from({ length: 20 }, (_, i) => `Ward ${i + 1}`).map((w) => (
               <option key={w} value={w} className="bg-[#121A2B]">{w}</option>
             ))}
           </select>
 
-          {/* Heatmap Mode Toggle */}
           <button
+            type="button"
             onClick={() => setHeatmapMode(!heatmapMode)}
             className={`px-3 py-1.5 rounded-xl text-xs font-mono transition-all border ${
-              heatmapMode 
-                ? 'bg-[#43D9FF]/20 text-[#43D9FF] border-[#43D9FF]' 
+              heatmapMode
+                ? 'bg-[#43D9FF]/20 text-[#43D9FF] border-[#43D9FF]'
                 : 'bg-[#0B1020] text-slate-300 border-[#223252] hover:text-white'
             }`}
           >
-            {heatmapMode ? 'Heatmap: ON' : 'Heatmap: OFF'}
+            {heatmapMode ? 'Density Rings: ON' : 'Density Rings: OFF'}
           </button>
         </div>
       </div>
 
-      {/* Main Map Container & Right Details Panel */}
+      {/* Main Map Container & Right Details Panel (explicit height per CF2) */}
       <div className="relative h-[620px] rounded-2xl overflow-hidden border border-[#223252] shadow-2xl bg-[#0B1020]">
-        
-        {/* Leaflet Map Div */}
-        <div ref={mapContainerRef} className="w-full h-full z-10" />
+        {mapsApiKey ? (
+          <GoogleMap
+            id={CITY_MAP_ID}
+            mapId="DEMO_MAP_ID"
+            colorScheme={ColorScheme.DARK}
+            defaultCenter={{ lat: 12.9716, lng: 77.61 }}
+            defaultZoom={12}
+            gestureHandling="greedy"
+            disableDefaultUI={false}
+            streetViewControl={false}
+            mapTypeControl={false}
+            internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
+            className="w-full h-full"
+          >
+            <CameraFocusController focusTarget={focusTarget} />
+
+            {visibleComplaints.map((comp) => {
+              const isCritical = comp.severity === 'CRITICAL';
+              const isHigh = comp.severity === 'HIGH';
+              const isMedium = comp.severity === 'MEDIUM';
+              const color = isCritical
+                ? '#FF4D5E'
+                : isHigh
+                  ? '#FF9B42'
+                  : isMedium
+                    ? '#FFD166'
+                    : '#47D18C';
+              const isSelected = selectedIncident?.id === comp.id;
+
+              return (
+                <AdvancedMarker
+                  key={comp.id}
+                  position={{ lat: comp.coordinates[0], lng: comp.coordinates[1] }}
+                  onClick={() => setSelectedIncident(comp)}
+                  title={`${comp.id}: ${comp.title}`}
+                  zIndex={isCritical ? 30 : isSelected ? 40 : 10}
+                >
+                  <div className="relative flex items-center justify-center cursor-pointer">
+                    {heatmapMode && (
+                      <div
+                        className="absolute rounded-full pointer-events-none"
+                        style={{
+                          width: isCritical ? 72 : isHigh ? 56 : 42,
+                          height: isCritical ? 72 : isHigh ? 56 : 42,
+                          background: `radial-gradient(circle, ${color}55 0%, ${color}10 60%, transparent 75%)`,
+                        }}
+                      />
+                    )}
+                    {isCritical && (
+                      <div
+                        className="absolute w-8 h-8 rounded-full animate-ping"
+                        style={{ backgroundColor: 'rgba(255, 77, 94, 0.45)' }}
+                      />
+                    )}
+                    <div
+                      className="relative w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white transition-transform hover:scale-110"
+                      style={{
+                        backgroundColor: '#121A2B',
+                        border: `${isSelected ? 3 : 2}px solid ${color}`,
+                        boxShadow: `0 0 ${isSelected ? 16 : 10}px ${color}90`,
+                      }}
+                    >
+                      {comp.sectorIcon}
+                    </div>
+                  </div>
+                </AdvancedMarker>
+              );
+            })}
+          </GoogleMap>
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center space-y-2">
+            <MapPin className="w-8 h-8 text-[#43D9FF]" />
+            <div className="text-sm font-mono text-white">
+              Google Maps City Radar requires VITE_GOOGLE_MAPS_API_KEY
+            </div>
+            <p className="text-xs text-slate-400 max-w-md">
+              {visibleComplaints.length} geocoded civic incidents are ready to render once the Google Maps API key is loaded.
+            </p>
+          </div>
+        )}
 
         {/* Top-Left Floating Legend */}
         <div className="absolute top-4 left-4 z-20 glass-panel p-3 rounded-xl border border-[#2C416A] text-[11px] font-mono space-y-1.5 shadow-xl">
@@ -258,10 +246,9 @@ export const CityIncidentMapView: React.FC = () => {
           </div>
         </div>
 
-        {/* Selected Incident Drawer (Blueprint Section 10) */}
+        {/* Selected Incident Drawer */}
         {selectedIncident && (
           <div className="absolute top-4 right-4 z-20 w-88 sm:w-96 glass-panel rounded-2xl border border-[#2C416A] shadow-2xl p-5 space-y-4 animate-in slide-in-from-right-4 duration-200 max-h-[580px] overflow-y-auto">
-            
             <div className="flex items-start justify-between border-b border-[#223252] pb-3">
               <div>
                 <span className="text-[10px] font-mono font-bold uppercase text-[#43D9FF] tracking-wider">
@@ -284,6 +271,7 @@ export const CityIncidentMapView: React.FC = () => {
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setSelectedIncident(null)}
                 className="p-1 rounded-lg bg-[#0B1020] text-slate-400 hover:text-white"
               >
@@ -291,17 +279,13 @@ export const CityIncidentMapView: React.FC = () => {
               </button>
             </div>
 
-            {/* Title & Description */}
             <div className="space-y-1">
-              <h3 className="text-sm font-bold text-white">
-                {selectedIncident.title}
-              </h3>
+              <h3 className="text-sm font-bold text-white">{selectedIncident.title}</h3>
               <p className="text-xs text-slate-300 leading-relaxed">
                 {selectedIncident.description}
               </p>
             </div>
 
-            {/* Photo preview if available */}
             {selectedIncident.imageUrl && (
               <div className="rounded-xl overflow-hidden border border-[#223252] h-32 bg-[#0B1020]">
                 <img
@@ -312,7 +296,6 @@ export const CityIncidentMapView: React.FC = () => {
               </div>
             )}
 
-            {/* Sector, Location, Priority Score (as specified in Blueprint Section 10) */}
             <div className="grid grid-cols-2 gap-2 text-xs">
               <div className="p-2.5 rounded-xl bg-[#0B1020] border border-[#223252]">
                 <div className="text-[10px] font-mono text-slate-400 uppercase">Sector</div>
@@ -330,22 +313,24 @@ export const CityIncidentMapView: React.FC = () => {
               </div>
             </div>
 
-            <div className="p-2.5 rounded-xl bg-[#0B1020] border border-[#223252] text-xs">
+            <div className="p-2.5 rounded-xl bg-[#0B1020] border border-[#223252] text-xs space-y-1">
               <div className="text-[10px] font-mono text-slate-400 uppercase">Location</div>
-              <div className="font-semibold text-white mt-0.5">
+              <div className="font-semibold text-white">
                 {selectedIncident.ward} · {selectedIncident.locationName}
+              </div>
+              <div className="text-[10px] font-mono text-[#43D9FF]">
+                {selectedIncident.coordinates[0].toFixed(5)}, {selectedIncident.coordinates[1].toFixed(5)}
               </div>
             </div>
 
-            {/* AI Reasoning */}
             <div className="p-2.5 rounded-xl bg-[#162035] border border-[#243354] text-xs space-y-1">
               <div className="text-[10px] font-mono uppercase text-[#8E9EB8]">AI Rationale</div>
-              <p className="text-slate-300 text-[11px] italic">"{selectedIncident.aiReasoning}"</p>
+              <p className="text-slate-300 text-[11px] italic">&ldquo;{selectedIncident.aiReasoning}&rdquo;</p>
             </div>
 
-            {/* Actions: VIEW COMPLAINT / Centering */}
             <div className="space-y-2 pt-1">
               <button
+                type="button"
                 onClick={() => setSelectedComplaintForDetails(selectedIncident)}
                 className="w-full py-2.5 rounded-xl bg-gradient-to-r from-[#C6FF5F] to-[#a8f828] text-[#0B1020] font-mono font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 hover:scale-[1.01] transition-all"
               >
@@ -354,6 +339,7 @@ export const CityIncidentMapView: React.FC = () => {
               </button>
 
               <button
+                type="button"
                 onClick={() => handleCenterOn(selectedIncident.coordinates)}
                 className="w-full py-2 rounded-xl bg-[#18233B] hover:bg-[#203154] border border-[#2C416A] text-slate-200 text-xs font-mono flex items-center justify-center gap-2"
               >
@@ -361,12 +347,9 @@ export const CityIncidentMapView: React.FC = () => {
                 <span>Focus Map Camera</span>
               </button>
             </div>
-
           </div>
         )}
-
       </div>
-
     </div>
   );
 };

@@ -25,9 +25,15 @@ export const Navbar: React.FC = () => {
     setSelectedComplaintForDetails,
     complaints,
     currentUser,
+    verifiedRole,
+    customClaims,
+    isFirestoreSynced,
+    signInWithGoogle,
+    logout,
     setIsLoginModalOpen,
     loginAs
   } = useApp();
+  const effectiveRole = customClaims.admin ? 'ADMIN' : customClaims.role || verifiedRole;
 
   const [time, setTime] = useState<string>('');
   const [showNotifications, setShowNotifications] = useState(false);
@@ -67,7 +73,15 @@ export const Navbar: React.FC = () => {
         {/* Brand & System Status */}
         <div className="flex items-center gap-3.5">
           <div 
-            onClick={() => setActiveTab('command-center')}
+            onClick={() =>
+              setActiveTab(
+                effectiveRole === 'ADMIN'
+                  ? 'command-center'
+                  : effectiveRole === 'DEPARTMENT_OFFICER'
+                    ? 'department-portal'
+                    : 'citizen-portal'
+              )
+            }
             className="flex items-center gap-2.5 cursor-pointer group"
           >
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#121A2B] to-[#1E2C4A] border border-[#2C416A] flex items-center justify-center text-[#C6FF5F] shadow-lg group-hover:border-[#C6FF5F]/50 transition-all">
@@ -80,7 +94,7 @@ export const Navbar: React.FC = () => {
                 </span>
                 <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-emerald-500/10 text-[#C6FF5F] border border-[#C6FF5F]/30">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#C6FF5F] animate-ping" />
-                  LIVE SYSTEM
+                  {isFirestoreSynced ? 'FIREBASE LIVE' : 'LIVE SYSTEM'}
                 </span>
               </div>
               <p className="text-[10px] tracking-widest uppercase font-mono text-[#8E9EB8] hidden sm:block">
@@ -143,8 +157,10 @@ export const Navbar: React.FC = () => {
               onClick={() => setShowUserMenu(!showUserMenu)}
               className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-[#121A2B] border border-[#2C416A] hover:border-[#C6FF5F] text-xs font-mono transition-all"
             >
-              <div className="w-5 h-5 rounded-md bg-[#18233B] flex items-center justify-center text-xs">
-                {currentUser.role === 'CITIZEN' ? (
+              <div className="w-5 h-5 rounded-md bg-[#18233B] flex items-center justify-center text-xs overflow-hidden">
+                {currentUser.avatar ? (
+                  <img src={currentUser.avatar} alt={currentUser.name} className="w-full h-full object-cover" />
+                ) : currentUser.role === 'CITIZEN' ? (
                   <User className="w-3.5 h-3.5 text-[#C6FF5F]" />
                 ) : currentUser.role === 'DEPARTMENT_OFFICER' ? (
                   <Building2 className="w-3.5 h-3.5 text-[#43D9FF]" />
@@ -159,7 +175,7 @@ export const Navbar: React.FC = () => {
                    'City Admin'}
                 </div>
                 <div className="text-[9px] text-[#8E9EB8] truncate max-w-[140px]">
-                  {currentUser.name}
+                  {currentUser.isAuthenticated ? currentUser.name : 'Sign in with Google'}
                 </div>
               </div>
               <ChevronDown className="w-3 h-3 text-slate-400 ml-0.5" />
@@ -168,79 +184,111 @@ export const Navbar: React.FC = () => {
             {showUserMenu && (
               <div className="absolute right-0 top-full mt-2 w-64 bg-[#121A2B] border border-[#2C416A] rounded-xl shadow-2xl p-2 z-50 animate-in fade-in duration-150 space-y-1">
                 <div className="px-2.5 py-1.5 border-b border-[#223252] text-[10px] font-mono text-[#8E9EB8] uppercase">
-                  SWITCH ACTIVE PORTAL
+                  {currentUser.isAuthenticated ? `VERIFIED: ${effectiveRole}` : 'AUTHENTICATION REQUIRED'}
                 </div>
-                
-                <button
-                  onClick={() => { loginAs('CITIZEN'); setShowUserMenu(false); }}
-                  className={`w-full text-left p-2 rounded-lg text-xs flex items-center justify-between ${
-                    currentUser.role === 'CITIZEN' ? 'bg-[#18233B] text-[#C6FF5F] font-bold' : 'hover:bg-[#162035] text-slate-300'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <User className="w-3.5 h-3.5 text-[#C6FF5F]" />
-                    <span>Citizen Dashboard</span>
-                  </div>
-                  {currentUser.role === 'CITIZEN' && <span className="text-[10px]">● Active</span>}
-                </button>
 
-                <button
-                  onClick={() => { loginAs('DEPARTMENT_OFFICER', 'dept-trees'); setShowUserMenu(false); }}
-                  className={`w-full text-left p-2 rounded-lg text-xs flex items-center justify-between ${
-                    currentUser.role === 'DEPARTMENT_OFFICER' && currentUser.departmentId === 'dept-trees' ? 'bg-[#18233B] text-[#43D9FF] font-bold' : 'hover:bg-[#162035] text-slate-300'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <Building2 className="w-3.5 h-3.5 text-[#43D9FF]" />
-                    <span>Tree / Horticulture Dept</span>
-                  </div>
-                  {currentUser.role === 'DEPARTMENT_OFFICER' && currentUser.departmentId === 'dept-trees' && <span className="text-[10px]">● Active</span>}
-                </button>
+                {verifiedRole === 'ADMIN' && currentUser.isAuthenticated ? (
+                  <>
+                    <button
+                      onClick={() => { loginAs('CITIZEN'); setShowUserMenu(false); }}
+                      className={`w-full text-left p-2 rounded-lg text-xs flex items-center justify-between ${
+                        currentUser.role === 'CITIZEN' ? 'bg-[#18233B] text-[#C6FF5F] font-bold' : 'hover:bg-[#162035] text-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <User className="w-3.5 h-3.5 text-[#C6FF5F]" />
+                        <span>Preview Citizen Portal</span>
+                      </div>
+                      {currentUser.role === 'CITIZEN' && <span className="text-[10px]">● Active</span>}
+                    </button>
 
-                <button
-                  onClick={() => { loginAs('DEPARTMENT_OFFICER', 'dept-roads'); setShowUserMenu(false); }}
-                  className={`w-full text-left p-2 rounded-lg text-xs flex items-center justify-between ${
-                    currentUser.role === 'DEPARTMENT_OFFICER' && currentUser.departmentId === 'dept-roads' ? 'bg-[#18233B] text-[#FF9B42] font-bold' : 'hover:bg-[#162035] text-slate-300'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <Building2 className="w-3.5 h-3.5 text-[#FF9B42]" />
-                    <span>Roads & Public Works Dept</span>
-                  </div>
-                </button>
+                    <button
+                      onClick={() => { loginAs('DEPARTMENT_OFFICER', 'dept-trees'); setShowUserMenu(false); }}
+                      className={`w-full text-left p-2 rounded-lg text-xs flex items-center justify-between ${
+                        currentUser.role === 'DEPARTMENT_OFFICER' && currentUser.departmentId === 'dept-trees' ? 'bg-[#18233B] text-[#43D9FF] font-bold' : 'hover:bg-[#162035] text-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Building2 className="w-3.5 h-3.5 text-[#43D9FF]" />
+                        <span>Preview Horticulture Dept</span>
+                      </div>
+                      {currentUser.role === 'DEPARTMENT_OFFICER' && currentUser.departmentId === 'dept-trees' && <span className="text-[10px]">● Active</span>}
+                    </button>
 
-                <button
-                  onClick={() => { loginAs('DEPARTMENT_OFFICER', 'dept-water'); setShowUserMenu(false); }}
-                  className={`w-full text-left p-2 rounded-lg text-xs flex items-center justify-between ${
-                    currentUser.role === 'DEPARTMENT_OFFICER' && currentUser.departmentId === 'dept-water' ? 'bg-[#18233B] text-[#3B82F6] font-bold' : 'hover:bg-[#162035] text-slate-300'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <Building2 className="w-3.5 h-3.5 text-[#3B82F6]" />
-                    <span>Water Board Dept</span>
-                  </div>
-                </button>
+                    <button
+                      onClick={() => { loginAs('DEPARTMENT_OFFICER', 'dept-roads'); setShowUserMenu(false); }}
+                      className={`w-full text-left p-2 rounded-lg text-xs flex items-center justify-between ${
+                        currentUser.role === 'DEPARTMENT_OFFICER' && currentUser.departmentId === 'dept-roads' ? 'bg-[#18233B] text-[#FF9B42] font-bold' : 'hover:bg-[#162035] text-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Building2 className="w-3.5 h-3.5 text-[#FF9B42]" />
+                        <span>Preview Roads Dept</span>
+                      </div>
+                    </button>
 
-                <button
-                  onClick={() => { loginAs('ADMIN'); setShowUserMenu(false); }}
-                  className={`w-full text-left p-2 rounded-lg text-xs flex items-center justify-between ${
-                    currentUser.role === 'ADMIN' ? 'bg-[#18233B] text-white font-bold' : 'hover:bg-[#162035] text-slate-300'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
-                    <span>City Operations Admin</span>
-                  </div>
-                  {currentUser.role === 'ADMIN' && <span className="text-[10px]">● Active</span>}
-                </button>
+                    <button
+                      onClick={() => { loginAs('DEPARTMENT_OFFICER', 'dept-water'); setShowUserMenu(false); }}
+                      className={`w-full text-left p-2 rounded-lg text-xs flex items-center justify-between ${
+                        currentUser.role === 'DEPARTMENT_OFFICER' && currentUser.departmentId === 'dept-water' ? 'bg-[#18233B] text-[#3B82F6] font-bold' : 'hover:bg-[#162035] text-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Building2 className="w-3.5 h-3.5 text-[#3B82F6]" />
+                        <span>Preview Water Board Dept</span>
+                      </div>
+                    </button>
 
-                <div className="pt-1 border-t border-[#223252]">
+                    <button
+                      onClick={() => { loginAs('ADMIN'); setShowUserMenu(false); }}
+                      className={`w-full text-left p-2 rounded-lg text-xs flex items-center justify-between ${
+                        currentUser.role === 'ADMIN' ? 'bg-[#18233B] text-white font-bold' : 'hover:bg-[#162035] text-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
+                        <span>City Operations Admin</span>
+                      </div>
+                      {currentUser.role === 'ADMIN' && <span className="text-[10px]">● Active</span>}
+                    </button>
+                  </>
+                ) : (
+                  <div className="px-2.5 py-2 text-[11px] text-slate-300 space-y-1">
+                    <div className="truncate font-semibold text-white">
+                      {currentUser.isAuthenticated ? currentUser.name : 'Not Signed In'}
+                    </div>
+                    {currentUser.isAuthenticated && (
+                      <div className="text-[10px] font-mono text-[#8E9EB8] truncate">
+                        {currentUser.departmentName || currentUser.email}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="pt-1 border-t border-[#223252] space-y-1">
+                  {!currentUser.isAuthenticated ? (
+                    <button
+                      onClick={() => { void signInWithGoogle(); setShowUserMenu(false); }}
+                      className="w-full text-left p-2 rounded-lg text-[11px] font-mono text-[#C6FF5F] hover:bg-[#18233B] flex items-center gap-1.5"
+                    >
+                      <Lock className="w-3 h-3" />
+                      <span>Sign in with Google →</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => { void logout(); setShowUserMenu(false); }}
+                      className="w-full text-left p-2 rounded-lg text-[11px] font-mono text-[#FF4D5E] hover:bg-[#18233B] flex items-center gap-1.5"
+                    >
+                      <Lock className="w-3 h-3" />
+                      <span>Sign Out →</span>
+                    </button>
+                  )}
                   <button
                     onClick={() => { setIsLoginModalOpen(true); setShowUserMenu(false); }}
-                    className="w-full text-left p-2 rounded-lg text-[11px] font-mono text-[#C6FF5F] hover:bg-[#18233B] flex items-center gap-1.5"
+                    className="w-full text-left p-2 rounded-lg text-[11px] font-mono text-slate-300 hover:bg-[#18233B] flex items-center gap-1.5"
                   >
                     <Lock className="w-3 h-3" />
-                    <span>Open Login Gateway Screen →</span>
+                    <span>Open Access Gateway →</span>
                   </button>
                 </div>
               </div>

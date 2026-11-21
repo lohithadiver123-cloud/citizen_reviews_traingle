@@ -4,16 +4,36 @@ export type TicketStatus = 'New' | 'Assigned' | 'In Progress' | 'Resolved';
 
 export type UserRole = 'CITIZEN' | 'DEPARTMENT_OFFICER' | 'ADMIN';
 
+export interface CustomClaims {
+  role?: UserRole;
+  departmentId?: string;
+  admin?: boolean;
+  source: 'idToken' | 'firestore' | 'none';
+}
+
+export interface ManagedUserRecord {
+  uid: string;
+  displayName: string;
+  role: UserRole;
+  departmentId?: string;
+  departmentName?: string;
+  ward?: string;
+}
+
 export interface AuthUser {
   id: string;
+  uid?: string;
   name: string;
   role: UserRole;
   email: string;
-  departmentId?: string; // e.g. 'dept-roads', 'dept-trees'
+  departmentId?: string; // active or assigned dept id e.g. 'dept-roads', 'dept-trees'
   departmentName?: string;
+  verifiedDepartmentId?: string; // authoritative dept id from custom claim or Firestore
   citizenPhone?: string;
   ward?: string;
   avatar?: string;
+  isAuthenticated?: boolean;
+  emailVerified?: boolean;
 }
 
 export interface CivicSector {
@@ -37,6 +57,7 @@ export interface CivicSector {
 
 export interface Complaint {
   id: string; // e.g. 'CL-1042'
+  docId?: string; // Firestore document ID
   title: string;
   description: string;
   sectorId: string;
@@ -45,12 +66,14 @@ export interface Complaint {
   severity: Severity;
   priorityScore: number; // 0 - 100
   department: string;
+  departmentId?: string;
   status: TicketStatus;
   ward: string; // e.g. 'Ward 12'
   locationName: string; // e.g. 'MG Road Junction, North Sector'
   coordinates: [number, number]; // [lat, lng]
   reportedAt: string; // ISO string or relative time
   resolvedAt?: string;
+  reporterUid?: string;
   citizenName?: string;
   language?: string;
   imageUrl?: string;
@@ -59,6 +82,8 @@ export interface Complaint {
   assignedTeam?: string;
   slaHours: number;
   timeRemaining?: string;
+  visibility?: 'PUBLIC' | 'PRIVATE';
+  upvoteCount?: number;
 }
 
 export interface Department {

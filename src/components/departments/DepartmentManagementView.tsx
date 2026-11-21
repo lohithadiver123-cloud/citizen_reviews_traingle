@@ -1,6 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { CIVIC_SECTORS } from '../../data/sectors';
+import { ManagedUserRecord, UserRole } from '../../types';
+import { db, handleFirestoreError, OperationType } from '../../firebase';
+import { BOOTSTRAPPED_ADMIN_EMAIL } from '../../utils/firestorePayloads';
+import { collection, onSnapshot } from 'firebase/firestore';
 import { 
   Building2, 
   Search, 
@@ -12,12 +16,76 @@ import {
   AlertTriangle,
   ArrowRight,
   ShieldCheck,
-  Send
+  Send,
+  UserCheck
 } from 'lucide-react';
 
 export const DepartmentManagementView: React.FC = () => {
-  const { departments, sectors, complaints, setActiveTab, setFilterSector } = useApp();
+  const {
+    departments,
+    sectors,
+    complaints,
+    setActiveTab,
+    setFilterSector,
+    currentUser,
+    verifiedRole,
+    updateUserRoleAndDepartment,
+  } = useApp();
   const [search, setSearch] = useState('');
+  const [managedUsers, setManagedUsers] = useState<ManagedUserRecord[]>([]);
+  const [savingUid, setSavingUid] = useState<string | null>(null);
+  const [roleEdits, setRoleEdits] = useState<Record<string, { role: UserRole; departmentId: string }>>({});
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  const isBootstrappedAdmin =
+    currentUser.isAuthenticated &&
+    currentUser.email.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase();
+
+  useEffect(() => {
+    if (!isBootstrappedAdmin) return;
+
+    const unsub = onSnapshot(
+      collection(db, 'users'),
+      (snapshot) => {
+        const list: ManagedUserRecord[] = snapshot.docs.map((docSnap) => {
+          const d = docSnap.data();
+          return {
+            uid: (d.uid as string) || docSnap.id,
+            displayName: (d.displayName as string) || 'CivicLens User',
+            role: (d.role as UserRole) || 'CITIZEN',
+            departmentId: d.departmentId as string | undefined,
+            departmentName: d.departmentName as string | undefined,
+            ward: d.ward as string | undefined,
+          };
+        });
+        setManagedUsers(list);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'users');
+      }
+    );
+
+    return () => unsub();
+  }, [isBootstrappedAdmin]);
+
+  const handleSaveUserAssignment = async (u: ManagedUserRecord) => {
+    const edit = roleEdits[u.uid] || {
+      role: u.role,
+      departmentId: u.departmentId || departments[0]?.id || 'dept-roads',
+    };
+    setSavingUid(u.uid);
+    setStatusMessage(null);
+    try {
+      await updateUserRoleAndDepartment(
+        u.uid,
+        edit.role,
+        edit.role === 'DEPARTMENT_OFFICER' ? edit.departmentId : undefined
+      );
+      setStatusMessage(`Updated ${u.displayName} to ${edit.role}${edit.role === 'DEPARTMENT_OFFICER' ? ` (${edit.departmentId})` : ''}.`);
+    } finally {
+      setSavingUid(null);
+    }
+  };
 
   const filteredDepts = departments.filter(d => 
     d.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -56,6 +124,125 @@ export const DepartmentManagementView: React.FC = () => {
           />
         </div>
       </div>
+
+      {/* Admin Role & Department Officer Assignment Panel */}
+      {verifiedRole === 'ADMIN' && (
+        <div className="glass-panel p-6 rounded-2xl border border-[#C6FF5F]/30 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#223252] pb-3">
+            <div>
+              <h2 className="text-sm font-bold font-mono tracking-wider uppercase text-white flex items-center gap-2">
+                <UserCheck className="w-4 h-4 text-[#C6FF5F]" />
+                <span>Department Officer Role & Bureau Assignment</span>
+              </h2>
+              <p className="text-xs text-[#8E9EB8] mt-0.5">
+                Assign signed-in Google users to a municipal bureau so ProtectedRoute locks them to their department.
+              </p>
+            </div>
+            {statusMessage && (
+              <span className="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-emerald-500/15 text-[#C6FF5F] border border-[#C6FF5F]/30">
+                {statusMessage}
+              </span>
+            )}
+          </div>
+
+          {!isBootstrappedAdmin ? (
+            <div className="text-xs text-[#8E9EB8] font-mono">
+              User directory listing is restricted to the primary bootstrapped City Admin account.
+            </div>
+          ) : managedUsers.length === 0 ? (
+            <div className="text-xs text-[#8E9EB8] font-mono">
+              No signed-in user profiles found in Firestore yet.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="border-b border-[#223252] text-[11px] font-mono uppercase text-[#8E9EB8] bg-[#0E1524]">
+                    <th className="py-2.5 px-3">User</th>
+                    <th className="py-2.5 px-3">Current Role</th>
+                    <th className="py-2.5 px-3">Assign Role</th>
+                    <th className="py-2.5 px-3">Assign Department Bureau</th>
+                    <th className="py-2.5 px-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#1E2C4A]">
+                  {managedUsers.map((u) => {
+                    const edit = roleEdits[u.uid] || {
+                      role: u.role,
+                      departmentId: u.departmentId || departments[0]?.id || 'dept-roads',
+                    };
+                    return (
+                      <tr key={u.uid} className="hover:bg-[#16223B]/50">
+                        <td className="py-2.5 px-3">
+                          <div className="font-semibold text-white">{u.displayName}</div>
+                          <div className="text-[10px] font-mono text-[#8E9EB8]">{u.uid}</div>
+                        </td>
+                        <td className="py-2.5 px-3 font-mono">
+                          <span className="px-2 py-0.5 rounded bg-[#0B1020] border border-[#2C416A] text-[10px] text-[#43D9FF]">
+                            {u.role}
+                            {u.departmentId ? ` · ${u.departmentId}` : ''}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <select
+                            value={edit.role}
+                            onChange={(e) =>
+                              setRoleEdits((prev) => ({
+                                ...prev,
+                                [u.uid]: {
+                                  ...edit,
+                                  role: e.target.value as UserRole,
+                                },
+                              }))
+                            }
+                            className="px-2.5 py-1.5 rounded-lg bg-[#0B1020] border border-[#223252] text-xs font-mono text-white"
+                          >
+                            <option value="CITIZEN">CITIZEN</option>
+                            <option value="DEPARTMENT_OFFICER">DEPARTMENT_OFFICER</option>
+                            <option value="ADMIN">ADMIN</option>
+                          </select>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <select
+                            value={edit.departmentId}
+                            disabled={edit.role !== 'DEPARTMENT_OFFICER'}
+                            onChange={(e) =>
+                              setRoleEdits((prev) => ({
+                                ...prev,
+                                [u.uid]: {
+                                  ...edit,
+                                  departmentId: e.target.value,
+                                },
+                              }))
+                            }
+                            className="px-2.5 py-1.5 rounded-lg bg-[#0B1020] border border-[#223252] text-xs font-mono text-white disabled:opacity-40"
+                          >
+                            {departments.map((d) => (
+                              <option key={d.id} value={d.id}>
+                                {d.name}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="py-2.5 px-3 text-right">
+                          <button
+                            type="button"
+                            disabled={savingUid === u.uid}
+                            onClick={() => void handleSaveUserAssignment(u)}
+                            className="px-3 py-1.5 rounded-lg bg-[#18233B] hover:bg-[#203154] border border-[#C6FF5F]/40 text-[11px] font-mono text-[#C6FF5F] disabled:opacity-50"
+                          >
+                            {savingUid === u.uid ? 'Saving...' : 'Save Assignment'}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 18-Sector Department Routing Matrix (Blueprint Section 12) */}
       <div className="glass-panel p-6 rounded-2xl border border-[#223252] space-y-4">

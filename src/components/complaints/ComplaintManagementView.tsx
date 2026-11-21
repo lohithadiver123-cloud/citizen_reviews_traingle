@@ -34,14 +34,23 @@ export const ComplaintManagementView: React.FC = () => {
     resetAllFilters,
     updateComplaintStatus,
     setSelectedComplaintForDetails,
-    setActiveTab
+    setActiveTab,
+    verifiedRole,
+    verifiedDepartmentId,
+    customClaims,
   } = useApp();
 
+  const effectiveRole = customClaims.admin ? 'ADMIN' : customClaims.role || verifiedRole;
+  const assignedDeptId = customClaims.departmentId || verifiedDepartmentId;
   const [sortField, setSortField] = useState<'priority' | 'time' | 'id'>('priority');
   const [sortAsc, setSortAsc] = useState(false);
+  const [myDeptOnly, setMyDeptOnly] = useState(false);
 
   // Filter complaints
   const filteredComplaints = complaints.filter(comp => {
+    if (myDeptOnly && assignedDeptId && comp.departmentId !== assignedDeptId) {
+      return false;
+    }
     // Search query
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -233,9 +242,22 @@ export const ComplaintManagementView: React.FC = () => {
         </div>
 
         {/* Filter status strip & Clear Filters */}
-        <div className="flex items-center justify-between text-xs font-mono text-[#8E9EB8] pt-1">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-mono text-[#8E9EB8] pt-1">
+          <div className="flex items-center gap-2 flex-wrap">
             <span>Showing <strong className="text-white">{sortedComplaints.length}</strong> of {complaints.length} complaints</span>
+            {effectiveRole === 'DEPARTMENT_OFFICER' && assignedDeptId && (
+              <button
+                type="button"
+                onClick={() => setMyDeptOnly((prev) => !prev)}
+                className={`text-[10px] px-2.5 py-0.5 rounded-full border transition-all ${
+                  myDeptOnly
+                    ? 'bg-[#43D9FF]/20 text-[#43D9FF] border-[#43D9FF]/50 font-bold'
+                    : 'bg-[#0B1020] text-slate-300 border-[#2C416A] hover:border-[#43D9FF]/40'
+                }`}
+              >
+                {myDeptOnly ? `Showing Assigned Bureau (${assignedDeptId})` : `Filter: My Bureau Only (${assignedDeptId})`}
+              </button>
+            )}
             {hasActiveFilters && (
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#43D9FF]/20 text-[#43D9FF]">
                 Active Filter
@@ -376,26 +398,45 @@ export const ComplaintManagementView: React.FC = () => {
                       {c.department}
                     </td>
 
-                    {/* Status Dropdown */}
+                    {/* Status Dropdown (editable only for Admin or assigned Department Officer) */}
                     <td className="py-3.5 px-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                      <select
-                        value={c.status}
-                        onChange={(e) => updateComplaintStatus(c.id, e.target.value as TicketStatus)}
-                        className={`text-[11px] font-mono font-semibold px-2 py-1 rounded-lg border focus:outline-none cursor-pointer ${
-                          c.status === 'Resolved' 
-                            ? 'bg-emerald-950/40 text-emerald-400 border-emerald-500/30' :
-                          c.status === 'In Progress'
-                            ? 'bg-orange-950/40 text-[#FF9B42] border-orange-500/30' :
-                          c.status === 'Assigned'
-                            ? 'bg-blue-950/40 text-[#43D9FF] border-blue-500/30' :
-                            'bg-slate-800 text-slate-300 border-slate-700'
-                        }`}
-                      >
-                        <option value="New" className="bg-[#121A2B]">New</option>
-                        <option value="Assigned" className="bg-[#121A2B]">Assigned</option>
-                        <option value="In Progress" className="bg-[#121A2B]">In Progress</option>
-                        <option value="Resolved" className="bg-[#121A2B]">Resolved</option>
-                      </select>
+                      {(effectiveRole === 'ADMIN' ||
+                        (effectiveRole === 'DEPARTMENT_OFFICER' &&
+                          assignedDeptId &&
+                          c.departmentId === assignedDeptId)) ? (
+                        <select
+                          value={c.status}
+                          onChange={(e) => updateComplaintStatus(c.id, e.target.value as TicketStatus)}
+                          className={`text-[11px] font-mono font-semibold px-2 py-1 rounded-lg border focus:outline-none cursor-pointer ${
+                            c.status === 'Resolved' 
+                              ? 'bg-emerald-950/40 text-emerald-400 border-emerald-500/30' :
+                            c.status === 'In Progress'
+                              ? 'bg-orange-950/40 text-[#FF9B42] border-orange-500/30' :
+                            c.status === 'Assigned'
+                              ? 'bg-blue-950/40 text-[#43D9FF] border-blue-500/30' :
+                              'bg-slate-800 text-slate-300 border-slate-700'
+                          }`}
+                        >
+                          <option value="New" className="bg-[#121A2B]">New</option>
+                          <option value="Assigned" className="bg-[#121A2B]">Assigned</option>
+                          <option value="In Progress" className="bg-[#121A2B]">In Progress</option>
+                          <option value="Resolved" className="bg-[#121A2B]">Resolved</option>
+                        </select>
+                      ) : (
+                        <span
+                          className={`inline-block text-[11px] font-mono font-semibold px-2 py-1 rounded-lg border ${
+                            c.status === 'Resolved'
+                              ? 'bg-emerald-950/40 text-emerald-400 border-emerald-500/30' :
+                            c.status === 'In Progress'
+                              ? 'bg-orange-950/40 text-[#FF9B42] border-orange-500/30' :
+                            c.status === 'Assigned'
+                              ? 'bg-blue-950/40 text-[#43D9FF] border-blue-500/30' :
+                              'bg-slate-800 text-slate-300 border-slate-700'
+                          }`}
+                        >
+                          {c.status}
+                        </span>
+                      )}
                     </td>
 
                     {/* Actions */}

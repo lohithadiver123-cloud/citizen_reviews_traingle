@@ -15,15 +15,29 @@ import {
 } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
-  const { complaints } = useApp();
-  const [modelAccuracy, setModelAccuracy] = useState('High (98.4%)');
-  const [autoDispatch, setAutoDispatch] = useState(true);
-  const [criticalSLAHours, setCriticalSLAHours] = useState(2);
-  const [highSLAHours, setHighSLAHours] = useState(6);
-  const [notificationSound, setNotificationSound] = useState(true);
+  const {
+    complaints,
+    platformSettings,
+    savePlatformSettings,
+    seedDemoComplaints,
+    isFirestoreSynced,
+    currentUser,
+  } = useApp();
+  const [modelAccuracy, setModelAccuracy] = useState(platformSettings.modelAccuracy);
+  const [autoDispatch, setAutoDispatch] = useState(platformSettings.autoDispatch);
+  const [criticalSLAHours, setCriticalSLAHours] = useState(platformSettings.criticalSLAHours);
+  const [highSLAHours, setHighSLAHours] = useState(platformSettings.highSLAHours);
+  const [notificationSound, setNotificationSound] = useState(platformSettings.notificationSound);
   const [savedToast, setSavedToast] = useState(false);
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    await savePlatformSettings({
+      modelAccuracy,
+      autoDispatch,
+      criticalSLAHours,
+      highSLAHours,
+      notificationSound,
+    });
     setSavedToast(true);
     setTimeout(() => setSavedToast(false), 2500);
   };
@@ -53,7 +67,7 @@ export const SettingsView: React.FC = () => {
         </div>
 
         <button
-          onClick={handleSave}
+          onClick={() => void handleSave()}
           className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-[#C6FF5F] to-[#a8f828] text-[#0B1020] font-bold text-xs font-mono uppercase tracking-wider hover:scale-[1.02] transition-all shadow-lg"
         >
           {savedToast ? <Check className="w-4 h-4 text-[#0B1020]" /> : <Save className="w-4 h-4 text-[#0B1020]" />}
@@ -168,22 +182,38 @@ export const SettingsView: React.FC = () => {
           <div className="flex items-center gap-2 border-b border-[#223252] pb-3">
             <Database className="w-4 h-4 text-[#43D9FF]" />
             <h2 className="text-sm font-bold font-mono uppercase text-white tracking-wider">
-              Demo Environment & Reset
+              Firebase Firestore & Seed Management
             </h2>
           </div>
 
-          <div className="flex items-center justify-between text-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
             <div>
-              <div className="font-semibold text-slate-200">Current Queue Size</div>
-              <div className="text-[#8E9EB8]">Currently managing {complaints.length} tickets across 18 sectors.</div>
+              <div className="font-semibold text-slate-200">
+                Current Queue Size ({isFirestoreSynced ? 'Synced with Firestore' : 'Local Preview'})
+              </div>
+              <div className="text-[#8E9EB8]">
+                Currently managing {complaints.length} tickets across 18 sectors.
+                {!currentUser.isAuthenticated && ' Sign in with Google to persist changes.'}
+              </div>
             </div>
-            <button
-              onClick={handleReloadPage}
-              className="px-3 py-1.5 rounded-lg bg-[#18233B] hover:bg-[#203154] border border-[#2C416A] text-xs font-mono text-[#43D9FF] flex items-center gap-1.5"
-            >
-              <RefreshCcw className="w-3.5 h-3.5" />
-              <span>Reset Demo State</span>
-            </button>
+            <div className="flex items-center gap-2">
+              {currentUser.isAuthenticated && (
+                <button
+                  onClick={() => void seedDemoComplaints()}
+                  className="px-3 py-1.5 rounded-lg bg-[#18233B] hover:bg-[#203154] border border-[#C6FF5F]/40 text-xs font-mono text-[#C6FF5F] flex items-center gap-1.5"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Seed Demo Incidents</span>
+                </button>
+              )}
+              <button
+                onClick={handleReloadPage}
+                className="px-3 py-1.5 rounded-lg bg-[#18233B] hover:bg-[#203154] border border-[#2C416A] text-xs font-mono text-[#43D9FF] flex items-center gap-1.5"
+              >
+                <RefreshCcw className="w-3.5 h-3.5" />
+                <span>Reload App</span>
+              </button>
+            </div>
           </div>
         </div>
 

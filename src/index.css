@@ -29,24 +29,6 @@
   background: #3B82F6;
 }
 
-/* Leaflet dark theme customization */
-.leaflet-container {
-  background: #0B1020 !important;
-  font-family: 'Inter', sans-serif !important;
-}
-
-.leaflet-popup-content-wrapper {
-  background: #121A2B !important;
-  color: #F1F5F9 !important;
-  border: 1px solid #223252 !important;
-  border-radius: 12px !important;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7) !important;
-}
-
-.leaflet-popup-tip {
-  background: #121A2B !important;
-}
-
 /* Glowing utilities */
 .glow-lime {
   box-shadow: 0 0 15px rgba(198, 255, 95, 0.35);

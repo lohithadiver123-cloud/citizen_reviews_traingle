@@ -25,6 +25,9 @@ import {
 export const DepartmentDashboardView: React.FC = () => {
   const { 
     currentUser, 
+    verifiedRole,
+    verifiedDepartmentId,
+    customClaims,
     complaints, 
     departments, 
     updateComplaintStatus, 
@@ -37,8 +40,13 @@ export const DepartmentDashboardView: React.FC = () => {
   const [selectedCrew, setSelectedCrew] = useState<{ [ticketId: string]: string }>({});
   const [resolutionNotes, setResolutionNotes] = useState<{ [ticketId: string]: string }>({});
 
-  // Current active department
-  const currentDept = departments.find(d => d.id === currentUser.departmentId) || 
+  const isAdminUser = verifiedRole === 'ADMIN';
+  const lockedDeptId = !isAdminUser
+    ? customClaims.departmentId || verifiedDepartmentId || currentUser.departmentId
+    : currentUser.departmentId;
+
+  // Current active department (strictly locked to assigned department for DEPARTMENT_OFFICER)
+  const currentDept = departments.find(d => d.id === lockedDeptId) || 
                       departments.find(d => d.id === 'dept-trees') || 
                       departments[0];
 
@@ -93,21 +101,27 @@ export const DepartmentDashboardView: React.FC = () => {
             </div>
           </div>
 
-          {/* Department Switcher Dropdown */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-            <span className="text-xs font-mono text-slate-400">Switch Department:</span>
-            <select
-              value={currentDept.id}
-              onChange={(e) => switchDepartment(e.target.value)}
-              className="px-3 py-2 rounded-xl bg-[#0B1020] border border-[#2C416A] text-xs font-mono text-slate-200 focus:outline-none focus:border-[#C6FF5F] cursor-pointer"
-            >
-              {departments.map((dept) => (
-                <option key={dept.id} value={dept.id} className="bg-[#121A2B]">
-                  {dept.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Department Switcher Dropdown (Admins only) or Locked Bureau Badge */}
+          {isAdminUser ? (
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <span className="text-xs font-mono text-slate-400">Preview Department:</span>
+              <select
+                value={currentDept.id}
+                onChange={(e) => switchDepartment(e.target.value)}
+                className="px-3 py-2 rounded-xl bg-[#0B1020] border border-[#2C416A] text-xs font-mono text-slate-200 focus:outline-none focus:border-[#C6FF5F] cursor-pointer"
+              >
+                {departments.map((dept) => (
+                  <option key={dept.id} value={dept.id} className="bg-[#121A2B]">
+                    {dept.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="px-3 py-2 rounded-xl bg-[#0B1020] border border-[#43D9FF]/40 text-xs font-mono text-[#43D9FF]">
+              Assigned Scope: {currentDept.id}
+            </div>
+          )}
         </div>
 
         {/* Department Operational Metrics */}
@@ -384,19 +398,21 @@ export const DepartmentDashboardView: React.FC = () => {
             </div>
           </div>
 
-          {/* Quick link to Command Center */}
-          <div className="p-4 rounded-xl bg-[#0B1020] border border-[#223252] space-y-2">
-            <div className="text-xs font-semibold text-slate-200">Municipal Command Center</div>
-            <p className="text-[11px] text-[#8E9EB8]">
-              Switch back to the City Operations Command Center for cross-department monitoring.
-            </p>
-            <button
-              onClick={() => setActiveTab('command-center')}
-              className="w-full py-2 rounded-lg bg-[#18233B] hover:bg-[#203154] border border-[#2C416A] text-xs font-mono text-[#C6FF5F] text-center"
-            >
-              Back to Command Center →
-            </button>
-          </div>
+          {/* Quick link to Command Center (Admin only) */}
+          {isAdminUser && (
+            <div className="p-4 rounded-xl bg-[#0B1020] border border-[#223252] space-y-2">
+              <div className="text-xs font-semibold text-slate-200">Municipal Command Center</div>
+              <p className="text-[11px] text-[#8E9EB8]">
+                Switch back to the City Operations Command Center for cross-department monitoring.
+              </p>
+              <button
+                onClick={() => setActiveTab('command-center')}
+                className="w-full py-2 rounded-lg bg-[#18233B] hover:bg-[#203154] border border-[#2C416A] text-xs font-mono text-[#C6FF5F] text-center"
+              >
+                Back to Command Center →
+              </button>
+            </div>
+          )}
 
         </div>
 

@@ -20,30 +20,27 @@ export const CitizenDashboardView: React.FC = () => {
     currentUser, 
     complaints, 
     setActiveTab, 
-    setSelectedComplaintForDetails 
+    setSelectedComplaintForDetails,
+    upvoteComplaint,
+    upvotedIds
   } = useApp();
-
-  const [upvotes, setUpvotes] = useState<{ [id: string]: number }>({});
 
   const citizenName = currentUser.name || 'Rahul Sharma';
   const citizenWard = currentUser.ward || 'Ward 8';
 
-  // Filter complaints associated with this citizen or Ward 8
+  // Filter complaints associated with this citizen or their ward
   const myComplaints = complaints.filter(c => 
-    c.citizenName?.toLowerCase().includes('rahul') || 
-    c.citizenName?.toLowerCase().includes('sharma') ||
+    (currentUser.uid && c.reporterUid === currentUser.uid) ||
+    c.citizenName?.toLowerCase().includes(citizenName.toLowerCase()) || 
     c.ward === citizenWard
-  ).slice(0, 4);
+  ).slice(0, 6);
 
   const resolvedCount = myComplaints.filter(c => c.status === 'Resolved').length;
   const inProgressCount = myComplaints.length - resolvedCount;
 
   const handleUpvote = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setUpvotes(prev => ({
-      ...prev,
-      [id]: (prev[id] || 0) + 1
-    }));
+    void upvoteComplaint(id);
   };
 
   return (
@@ -207,10 +204,17 @@ export const CitizenDashboardView: React.FC = () => {
                 <div className="flex items-center justify-between text-xs pt-1">
                   <button
                     onClick={(e) => handleUpvote(item.id, e)}
-                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-[#18233B] hover:bg-[#203154] border border-[#2C416A] text-slate-300 hover:text-[#C6FF5F] font-mono text-[11px] transition-all"
+                    disabled={Boolean(upvotedIds[item.id])}
+                    className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border font-mono text-[11px] transition-all ${
+                      upvotedIds[item.id]
+                        ? 'bg-[#C6FF5F]/20 border-[#C6FF5F]/50 text-[#C6FF5F]'
+                        : 'bg-[#18233B] hover:bg-[#203154] border-[#2C416A] text-slate-300 hover:text-[#C6FF5F]'
+                    }`}
                   >
                     <ThumbsUp className="w-3 h-3" />
-                    <span>Confirm / Upvote ({8 + (upvotes[item.id] || 0)})</span>
+                    <span>
+                      {upvotedIds[item.id] ? 'Confirmed' : 'Confirm / Upvote'} ({item.upvoteCount ?? 0})
+                    </span>
                   </button>
 
                   <span className="text-[#43D9FF] font-mono text-[11px] flex items-center gap-1 group-hover:translate-x-1 transition-transform">

@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { DEMO_SCENARIOS, DemoScenario } from '../../data/demoScenarios';
-import { CIVIC_SECTORS } from '../../data/sectors';
-import { analyzeComplaintAI } from '../../utils/aiClassifier';
 import { AIAnalysisResult } from '../../types';
 import { 
   Sparkles, 
@@ -24,6 +22,7 @@ import {
   FileCheck2,
   SlidersHorizontal
 } from 'lucide-react';
+import { LiveLocationPicker } from '../map/LiveLocationPicker';
 
 export const AITriageView: React.FC = () => {
   const { 
@@ -31,7 +30,9 @@ export const AITriageView: React.FC = () => {
     setActiveTab, 
     setSelectedComplaintForDetails,
     activeDemoScenarioId, 
-    setActiveDemoScenarioId 
+    setActiveDemoScenarioId,
+    currentUser,
+    setIsLoginModalOpen
   } = useApp();
 
   // Form State
@@ -41,13 +42,16 @@ export const AITriageView: React.FC = () => {
   const [locationName, setLocationName] = useState('Sankey Tank Crossroad, Ward 8');
   const [coordinates, setCoordinates] = useState<[number, number]>([13.0068, 77.5755]);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [citizenName, setCitizenName] = useState('Rajesh Sharma');
+  const [citizenName, setCitizenName] = useState(
+    currentUser.isAuthenticated ? currentUser.name : 'Rajesh Sharma'
+  );
   const [manualSectorId, setManualSectorId] = useState<string>('');
 
   // AI Pipeline State
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState(0);
   const [analysisResult, setAnalysisResult] = useState<AIAnalysisResult | null>(null);
+  const [triageError, setTriageError] = useState<string | null>(null);
   const [createdTicketId, setCreatedTicketId] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
 
@@ -97,7 +101,7 @@ export const AITriageView: React.FC = () => {
     }, 2400);
   };
 
-  const runAIProcessing = (
+  const runAIProcessing = async (
     textToAnalyze: string, 
     sectorOverride?: string, 
     langOverride?: string
@@ -107,31 +111,48 @@ export const AITriageView: React.FC = () => {
     setIsProcessing(true);
     setProcessingStep(0);
     setAnalysisResult(null);
+    setTriageError(null);
     setCreatedTicketId(null);
 
-    // Step-by-step animation
     let currentStep = 0;
     const interval = setInterval(() => {
       currentStep++;
       if (currentStep < processingSteps.length) {
         setProcessingStep(currentStep);
-      } else {
-        clearInterval(interval);
-        // Complete analysis
-        const result = analyzeComplaintAI(
-          textToAnalyze, 
-          sectorOverride || (manualSectorId ? manualSectorId : undefined), 
-          langOverride || language
-        );
-        setAnalysisResult(result);
-        setIsProcessing(false);
-
-        // Scroll into view
-        setTimeout(() => {
-          resultsRef.current?.scrollIntoView({ behavior: 'smooth' });
-        }, 150);
       }
-    }, 450);
+    }, 350);
+
+    try {
+      const response = await fetch('/api/triage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: textToAnalyze,
+          manualSectorId: sectorOverride || (manualSectorId || undefined),
+          language: langOverride || language,
+          ward,
+          locationName,
+        }),
+      });
+
+      const data = (await response.json()) as AIAnalysisResult & { error?: string };
+      if (!response.ok) {
+        throw new Error(data.error || `AI Triage request failed (${response.status}).`);
+      }
+
+      clearInterval(interval);
+      setProcessingStep(processingSteps.length - 1);
+      setAnalysisResult(data);
+      setIsProcessing(false);
+
+      setTimeout(() => {
+        resultsRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 150);
+    } catch (err) {
+      clearInterval(interval);
+      setIsProcessing(false);
+      setTriageError(err instanceof Error ? err.message : 'Unable to analyze complaint with Gemini AI.');
+    }
   };
 
   const handleAnalyzeClick = () => {
@@ -140,6 +161,10 @@ export const AITriageView: React.FC = () => {
 
   const handleCreateTicket = () => {
     if (!analysisResult) return;
+    if (!currentUser.isAuthenticated) {
+      setIsLoginModalOpen(true);
+      return;
+    }
 
     const newTicket = addComplaint({
       title: complaintText.slice(0, 65) + (complaintText.length > 65 ? '...' : ''),
@@ -154,7 +179,7 @@ export const AITriageView: React.FC = () => {
       ward: ward,
       locationName: locationName,
       coordinates: coordinates,
-      citizenName: citizenName,
+      citizenName: currentUser.name || citizenName,
       language: analysisResult.detectedLanguage,
       imageUrl: selectedImage || undefined,
       aiReasoning: analysisResult.aiReasoning,
@@ -324,35 +349,52 @@ export const AITriageView: React.FC = () => {
               </div>
             </div>
 
-            {/* Location & Ward */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-              <div className="space-y-1.5">
-                <label className="text-xs font-mono text-slate-300 flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-[#FF9B42]" />
-                  <span>Ward Jurisdiction</span>
-                </label>
-                <select
-                  value={ward}
-                  onChange={(e) => setWard(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-[#0B1020] border border-[#223252] text-xs text-slate-200 focus:outline-none focus:border-[#43D9FF]"
-                >
-                  {Array.from({ length: 20 }, (_, i) => `Ward ${i + 1}`).map(w => (
-                    <option key={w} value={w} className="bg-[#121A2B]">{w}</option>
-                  ))}
-                </select>
-              </div>
+            {/* Live Location Map Picker & Ward */}
+            <div className="space-y-3 pt-2">
+              <LiveLocationPicker
+                coordinates={coordinates}
+                locationName={locationName}
+                onLocationChange={(nextCoords, resolvedAddress, wardHint) => {
+                  setCoordinates(nextCoords);
+                  if (resolvedAddress) {
+                    setLocationName(resolvedAddress);
+                  }
+                  if (wardHint) {
+                    setWard(wardHint);
+                  }
+                }}
+              />
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-mono text-slate-300 flex items-center gap-1.5">
-                  <span>Street / Landmark</span>
-                </label>
-                <input
-                  type="text"
-                  value={locationName}
-                  onChange={(e) => setLocationName(e.target.value)}
-                  placeholder="e.g. Indiranagar 100ft Road"
-                  className="w-full px-3 py-2 rounded-lg bg-[#0B1020] border border-[#223252] text-xs text-slate-200 focus:outline-none focus:border-[#43D9FF]"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-mono text-slate-300 flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-[#FF9B42]" />
+                    <span>Ward Jurisdiction</span>
+                  </label>
+                  <select
+                    value={ward}
+                    onChange={(e) => setWard(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-[#0B1020] border border-[#223252] text-xs text-slate-200 focus:outline-none focus:border-[#43D9FF]"
+                  >
+                    {Array.from({ length: 20 }, (_, i) => `Ward ${i + 1}`).map(w => (
+                      <option key={w} value={w} className="bg-[#121A2B]">{w}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-mono text-slate-300 flex items-center gap-1.5">
+                    <span>Street / Landmark</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={locationName}
+                    onChange={(e) => setLocationName(e.target.value)}
+                    maxLength={200}
+                    placeholder="e.g. Indiranagar 100ft Road"
+                    className="w-full px-3 py-2 rounded-lg bg-[#0B1020] border border-[#223252] text-xs text-slate-200 focus:outline-none focus:border-[#43D9FF]"
+                  />
+                </div>
               </div>
             </div>
 
@@ -678,6 +720,17 @@ export const AITriageView: React.FC = () => {
             </div>
           )}
 
+          {/* Triage API Error Banner */}
+          {triageError && !isProcessing && (
+            <div className="p-4 rounded-2xl bg-red-950/30 border border-[#FF4D5E]/50 text-xs text-red-200 space-y-2">
+              <div className="flex items-center gap-2 font-mono font-bold text-[#FF4D5E]">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>GEMINI AI TRIAGE ERROR</span>
+              </div>
+              <p className="text-slate-300">{triageError}</p>
+            </div>
+          )}
+
           {/* 3. Empty State when no analysis has run */}
           {!analysisResult && !isProcessing && (
             <div className="border border-dashed border-[#223252] rounded-2xl p-8 text-center space-y-4 bg-[#0B1020]/30">
@@ -689,7 +742,7 @@ export const AITriageView: React.FC = () => {
                   Awaiting Citizen Incident Report
                 </h3>
                 <p className="text-xs text-[#8E9EB8] max-w-sm mx-auto">
-                  Type an issue or click any quick pre-fill to watch the AI evaluate urgency, map to one of 18 sectors, and formulate municipal actions.
+                  Type an issue or click any quick pre-fill to watch Gemini AI evaluate urgency, map to one of 18 sectors, and formulate municipal actions.
                 </p>
               </div>
               <div className="pt-2 flex justify-center gap-2">
